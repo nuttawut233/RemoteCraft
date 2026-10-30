@@ -8,6 +8,7 @@ A clean-room remote desktop app for Windows, modelled on the AnyDesk 5 layout an
 - The session tab has a toolbar with:
   - chat;
   - display options: fit or 1:1, quality and monitor;
+  - zoom out / zoom in buttons (25%–400%); click the percentage to fit to window again;
   - actions: Ctrl+Alt+Del, Task Manager, the Win key, Alt+Tab, lock, refresh and screenshot;
   - view-only mode, clipboard sync, a two-pane file manager, full screen (F11) and disconnect.
 - The host side has an Accept/Dismiss window with live permission toggles (keyboard/mouse, clipboard, files, lock), chat and Disconnect.
@@ -27,7 +28,11 @@ dotnet build -c Release
 ```
 powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 ```
-This produces `dist\RemoteCraft-Setup-<version>.exe`. It is built with Inno Setup 6 and bundles a self-contained .NET 8 runtime, so the target PC doesn't need .NET.
+This produces `dist\RemoteCraft-Setup-<version>.exe` and `dist\RemoteCraft-<version>-portable.exe`.
+
+**Portable:** `RemoteCraft-<version>-portable.exe` is one self-contained file that runs without installing (no .NET needed). Settings are kept in `%APPDATA%\RemoteCraft`, the same as the installed app.
+
+**Setup:** It is built with Inno Setup 6 and bundles a self-contained .NET 8 runtime, so the target PC doesn't need .NET.
 - It installs per user (no admin prompt) by default. You can choose "all users" in the wizard instead.
 - It installs the app plus `RemoteCraft.Relay.exe`.
 - Optional tasks are a desktop shortcut, starting with Windows, and a Windows Firewall rule (all-users installs only).

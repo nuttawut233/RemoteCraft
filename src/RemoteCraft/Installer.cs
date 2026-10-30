@@ -15,6 +15,11 @@ public static class Installer
     public static bool IsInstalled => File.Exists(InstalledExe) ||
         AppContext.BaseDirectory.StartsWith(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Running as the portable single-file exe (the assembly has no path on disk).</summary>
+#pragma warning disable IL3000 // an empty Location is exactly what this checks for
+    public static bool IsSingleFile => string.IsNullOrEmpty(typeof(Installer).Assembly.Location);
+#pragma warning restore IL3000
+
     public static bool RunningFromInstall =>
         string.Equals(Path.GetFullPath(AppContext.BaseDirectory).TrimEnd('\\'), InstallDir, StringComparison.OrdinalIgnoreCase);
 
@@ -25,14 +30,17 @@ public static class Installer
         if (!RunningFromInstall)
         {
             Directory.CreateDirectory(InstallDir);
-            foreach (var file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
-            {
-                var rel = Path.GetRelativePath(src, file);
-                if (rel.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)) continue;
-                var dest = Path.Combine(InstallDir, rel);
-                Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
-                File.Copy(file, dest, true);
-            }
+            // Portable single-file exe: copy just the exe, never the rest of its folder (e.g. Downloads).
+            if (IsSingleFile) File.Copy(CurrentExe, InstalledExe, true);
+            else
+                foreach (var file in Directory.EnumerateFiles(src, "*", SearchOption.AllDirectories))
+                {
+                    var rel = Path.GetRelativePath(src, file);
+                    if (rel.EndsWith(".pdb", StringComparison.OrdinalIgnoreCase)) continue;
+                    var dest = Path.Combine(InstallDir, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    File.Copy(file, dest, true);
+                }
         }
         var programs = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
         var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);

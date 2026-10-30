@@ -1,4 +1,4 @@
-# Builds dist\RemoteCraft-Setup-<version>.exe
+# Builds dist\RemoteCraft-Setup-<version>.exe and dist\RemoteCraft-<version>-portable.exe
 #   1. dotnet publish the app and the relay (Release, win-x64, self-contained → no .NET needed on the target PC)
 #   2. Inno Setup compiler (ISCC) on installer\RemoteCraft.iss
 # Requires: .NET 8 SDK, Inno Setup 6 (winget install JRSoftware.InnoSetup).
@@ -29,3 +29,13 @@ if ($LASTEXITCODE) { throw "ISCC failed ($LASTEXITCODE)" }
 
 $setup = Join-Path $root "dist\RemoteCraft-Setup-$Version.exe"
 "Installer: $setup ($([math]::Round((Get-Item $setup).Length / 1MB, 1)) MB)"
+
+# Portable: one self-contained exe that runs without installing.
+$portableDir = Join-Path $root 'publish-portable'
+if (Test-Path $portableDir) { Remove-Item $portableDir -Recurse -Force }
+& $dotnet publish $app -c Release -r win-x64 --self-contained true -p:Version=$Version -p:DebugType=none `
+    -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o $portableDir -nologo
+if ($LASTEXITCODE) { throw "portable publish failed ($LASTEXITCODE)" }
+$portable = Join-Path $root "dist\RemoteCraft-$Version-portable.exe"
+Copy-Item (Join-Path $portableDir 'RemoteCraft.exe') $portable -Force
+"Portable:  $portable ($([math]::Round((Get-Item $portable).Length / 1MB, 1)) MB)"

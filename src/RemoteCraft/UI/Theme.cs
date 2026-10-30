@@ -106,6 +106,7 @@ public static class Theme
 
 public static class Glyph
 {
+    public const string ZoomIn = "", ZoomOut = "";
     public const string Chat = "", Monitor = "", Bolt = "", Keyboard = "",
         Clipboard = "", Folder = "", Cancel = "", ChromeClose = "",
         ChromeMin = "", ChromeMax = "", ChromeRestore = "", Star = "",

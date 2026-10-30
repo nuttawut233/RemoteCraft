@@ -14,7 +14,8 @@ public sealed class SessionPage : Panel
     readonly BoxedTextBox _password;
     readonly CheckBox _remember;
     readonly FlatButton _login, _cancel, _reconnect;
-    readonly IconButton _chatBtn, _displayBtn, _actionsBtn, _clipBtn, _filesBtn, _shotBtn, _fullBtn, _closeBtn, _inputBtn;
+    readonly IconButton _chatBtn, _displayBtn, _actionsBtn, _clipBtn, _filesBtn, _shotBtn, _fullBtn, _closeBtn, _inputBtn, _zoomOutBtn, _zoomInBtn;
+    readonly Label _zoomLabel;
     ViewerControl _viewer;
     FileManagerControl _files;
     ChatPanel _chat;
@@ -36,6 +37,14 @@ public sealed class SessionPage : Panel
         _name = new Label { AutoSize = false, Font = Theme.Ui(10.5f, FontStyle.Bold), ForeColor = Theme.Text, TextAlign = ContentAlignment.MiddleLeft, Bounds = new Rectangle(Theme.S(14), Theme.S(4), Theme.S(200), Theme.S(36)) };
         _chatBtn = new IconButton(Glyph.Chat, "Chat");
         _displayBtn = new IconButton(Glyph.Monitor, "Display") { DropDown = true, Width = Theme.S(50) };
+        _zoomOutBtn = new IconButton(Glyph.ZoomOut, "Zoom out");
+        _zoomLabel = new Label
+        {
+            AutoSize = false, Size = new Size(Theme.S(46), Theme.S(36)), Font = Theme.Ui(9), ForeColor = Theme.Text,
+            TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand, Text = "Fit",
+        };
+        new ToolTip().SetToolTip(_zoomLabel, "Click to fit to window");
+        _zoomInBtn = new IconButton(Glyph.ZoomIn, "Zoom in");
         _actionsBtn = new IconButton(Glyph.Bolt, "Actions") { DropDown = true, Width = Theme.S(50) };
         _inputBtn = new IconButton(Glyph.Mouse, "Control the remote desk (off = view only)") { Checked = true };
         _clipBtn = new IconButton(Glyph.Clipboard, "Synchronise clipboard") { Checked = true };
@@ -46,7 +55,7 @@ public sealed class SessionPage : Panel
         _latency = new Label { AutoSize = false, Font = Theme.Ui(9), ForeColor = Theme.SubText, TextAlign = ContentAlignment.MiddleRight, Size = new Size(Theme.S(220), Theme.S(36)) };
 
         int x = Theme.S(220);
-        foreach (var b in new[] { _chatBtn, _displayBtn, _actionsBtn, _inputBtn, _clipBtn, _filesBtn, _shotBtn, _fullBtn })
+        foreach (var b in new Control[] { _chatBtn, _displayBtn, _zoomOutBtn, _zoomLabel, _zoomInBtn, _actionsBtn, _inputBtn, _clipBtn, _filesBtn, _shotBtn, _fullBtn })
         {
             b.Location = new Point(x, Theme.S(4));
             x += b.Width + 2;
@@ -61,6 +70,9 @@ public sealed class SessionPage : Panel
 
         _chatBtn.Click += (_, _) => ToggleChat();
         _displayBtn.Click += (_, _) => _displayBtn.ShowMenu(BuildDisplayMenu());
+        _zoomOutBtn.Click += (_, _) => StepZoom(false);
+        _zoomInBtn.Click += (_, _) => StepZoom(true);
+        _zoomLabel.Click += (_, _) => { if (_zoomLabel.Enabled) SetFit(true); };
         _actionsBtn.Click += (_, _) => _actionsBtn.ShowMenu(BuildActionsMenu());
         _inputBtn.Click += (_, _) =>
         {
@@ -172,7 +184,7 @@ public sealed class SessionPage : Panel
         }
 
         bool connected = s.State == ClientState.Connected;
-        foreach (var b in new[] { _chatBtn, _displayBtn, _actionsBtn, _inputBtn, _clipBtn, _filesBtn, _shotBtn, _fullBtn })
+        foreach (var b in new Control[] { _chatBtn, _displayBtn, _zoomOutBtn, _zoomLabel, _zoomInBtn, _actionsBtn, _inputBtn, _clipBtn, _filesBtn, _shotBtn, _fullBtn })
             b.Enabled = connected && (!files || b == _chatBtn);
         _closeBtn.Enabled = s.State != ClientState.Closed;
 
@@ -296,7 +308,7 @@ public sealed class SessionPage : Panel
         var fit = Ctl.Item("Fit to window", () => SetFit(true), Glyph.BackToWindow);
         fit.Checked = _viewer?.Fit ?? true;
         var orig = Ctl.Item("Original size (1:1)", () => SetFit(false), Glyph.FullScreen);
-        orig.Checked = !(_viewer?.Fit ?? true);
+        orig.Checked = _viewer != null && !_viewer.Fit && _viewer.Zoom == 1f;
         m.Items.Add(fit);
         m.Items.Add(orig);
         m.Items.Add(new ToolStripSeparator());
@@ -333,7 +345,24 @@ public sealed class SessionPage : Panel
         Settings.Current.Save();
         if (_viewer == null) return;
         _viewer.Fit = fit;
+        if (!fit) _viewer.Zoom = 1f;
         _viewer.Invalidate();
+        UpdateZoomLabel();
+    }
+
+    void StepZoom(bool zoomIn)
+    {
+        if (_viewer == null) return;
+        _viewer.StepZoom(zoomIn);
+        UpdateZoomLabel();
+        _viewer.Focus();
+    }
+
+    void UpdateZoomLabel()
+    {
+        if (_viewer == null) return;
+        var text = _viewer.Fit ? $"Fit {Math.Round(_viewer.CurrentScale * 100)}%" : $"{Math.Round(_viewer.Zoom * 100)}%";
+        if (_zoomLabel.Text != text) _zoomLabel.Text = text;
     }
 
     ContextMenuStrip BuildActionsMenu()
@@ -410,6 +439,7 @@ public sealed class SessionPage : Panel
         if (s.Via != null) parts.Add(s.Via);
         parts.Add("encrypted");
         _latency.Text = string.Join("  ·  ", parts);
+        UpdateZoomLabel();
         if (!s.Perms.Input && _viewer != null && !_viewer.ViewOnly) { _viewer.ViewOnly = true; _inputBtn.Checked = false; }
     }
 

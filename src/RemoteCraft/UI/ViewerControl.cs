@@ -17,7 +17,34 @@ public sealed class ViewerControl : Control
     static Cursor _dotCursor;
 
     public bool Fit { get; set; } = true;
+    /// <summary>Scale used when not fitting: 1 = original size.</summary>
+    public float Zoom { get; set; } = 1f;
     public bool ViewOnly { get; set; }
+
+    static readonly float[] ZoomSteps = { 0.25f, 0.33f, 0.5f, 0.67f, 0.75f, 0.9f, 1f, 1.25f, 1.5f, 1.75f, 2f, 3f, 4f };
+
+    /// <summary>The scale currently on screen, whether fitting or zoomed.</summary>
+    public float CurrentScale
+    {
+        get
+        {
+            var fs = FrameSize;
+            return fs.IsEmpty || _dest.Width == 0 ? (Fit ? 1f : Zoom) : (float)_dest.Width / fs.Width;
+        }
+    }
+
+    /// <summary>Moves one zoom step in or out from the current scale and leaves fit mode.</summary>
+    public void StepZoom(bool zoomIn)
+    {
+        float cur = CurrentScale;
+        float next = zoomIn
+            ? ZoomSteps.FirstOrDefault(z => z > cur + 0.01f, ZoomSteps[^1])
+            : ZoomSteps.LastOrDefault(z => z < cur - 0.01f, ZoomSteps[0]);
+        Fit = false;
+        Zoom = next;
+        ComputeDest(FrameSize);
+        Invalidate();
+    }
 
     public ViewerControl(ClientSession session)
     {
@@ -75,10 +102,11 @@ public sealed class ViewerControl : Control
         }
         else
         {
-            // 1:1. When the remote screen is bigger than the view, it pans with the mouse.
-            int x = fs.Width <= Width ? (Width - fs.Width) / 2 : -(int)((long)(fs.Width - Width) * Math.Clamp(_mouse.X, 0, Width) / Math.Max(1, Width));
-            int y = fs.Height <= Height ? (Height - fs.Height) / 2 : -(int)((long)(fs.Height - Height) * Math.Clamp(_mouse.Y, 0, Height) / Math.Max(1, Height));
-            _dest = new Rectangle(x, y, fs.Width, fs.Height);
+            // Zoomed (1:1 or other). When the remote screen is bigger than the view, it pans with the mouse.
+            int w = Math.Max(1, (int)(fs.Width * Zoom)), h = Math.Max(1, (int)(fs.Height * Zoom));
+            int x = w <= Width ? (Width - w) / 2 : -(int)((long)(w - Width) * Math.Clamp(_mouse.X, 0, Width) / Math.Max(1, Width));
+            int y = h <= Height ? (Height - h) / 2 : -(int)((long)(h - Height) * Math.Clamp(_mouse.Y, 0, Height) / Math.Max(1, Height));
+            _dest = new Rectangle(x, y, w, h);
         }
     }
 
