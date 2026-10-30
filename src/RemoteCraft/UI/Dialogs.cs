@@ -122,7 +122,7 @@ public sealed class SettingsForm : DialogBase
     // Connection
     NumericUpDown _port;
     CheckBox _discovery;
-    TextBox _relay;
+    TextBox _relay, _relayKey;
 
     public SettingsForm(MainForm main, string page) : base("Settings", 760, 520, "Save")
     {
@@ -281,12 +281,16 @@ public sealed class SettingsForm : DialogBase
         Caption(p, "RELAY SERVER (to reach desks by id across the internet), e.g. relay.example.com:7180", 162);
         _relay = new TextBox { Text = s.RelayServer, Font = Theme.Ui(10.5f), Bounds = new Rectangle(0, Theme.S(184), Theme.S(360), Theme.S(30)), PlaceholderText = "host[:port]  (empty = LAN only)" };
         p.Controls.Add(_relay);
+        Caption(p, "RELAY KEY (the --key the relay was started with; empty for an open relay)", 228);
+        _relayKey = new TextBox { Text = s.GetRelayKey() ?? "", Font = Theme.Ui(10.5f), Bounds = new Rectangle(0, Theme.S(250), Theme.S(360), Theme.S(30)), UseSystemPasswordChar = true };
+        p.Controls.Add(_relayKey);
         var rs = Ctl.Label(_main.RelayStatus ?? "", 9.5f, Theme.SubText, autoSize: false);
-        rs.SetBounds(0, Theme.S(218), Theme.S(520), Theme.S(40));
+        rs.SetBounds(0, Theme.S(288), Theme.S(540), Theme.S(36));
         p.Controls.Add(rs);
-        var note = Ctl.Label("Run RemoteCraft.Relay.exe on a server that both sides can reach (open TCP port 7180).\n" +
-                             "Sessions stay end-to-end encrypted; the relay only forwards bytes.", 9.5f, Theme.SubText, autoSize: false);
-        note.SetBounds(0, Theme.S(262), Theme.S(540), Theme.S(50));
+        var note = Ctl.Label("Internet: run RemoteCraft.Relay on a server both sides can reach (open TCP port 7180), and enter the\n" +
+                             "same relay address and key on every PC. Sessions stay end-to-end encrypted; the relay only forwards bytes.",
+            9.5f, Theme.SubText, autoSize: false);
+        note.SetBounds(0, Theme.S(326), Theme.S(560), Theme.S(50));
         p.Controls.Add(note);
     }
 
@@ -313,7 +317,8 @@ public sealed class SettingsForm : DialogBase
         var s = Settings.Current;
         var name = _name.Text.Trim();
         if (name.Length == 0) { _nav.SelectedItem = "General"; _name.Focus(); return false; }
-        bool restartNet = s.Port != (int)_port.Value || s.RelayServer != _relay.Text.Trim() || s.DiscoveryEnabled != _discovery.Checked;
+        bool restartNet = s.Port != (int)_port.Value || s.RelayServer != _relay.Text.Trim() || s.DiscoveryEnabled != _discovery.Checked
+                          || (s.GetRelayKey() ?? "") != _relayKey.Text;
         s.DisplayName = name;
         s.CloseToTray = _tray.Checked;
         s.AllowRequests = _allowRequests.Checked;
@@ -324,6 +329,7 @@ public sealed class SettingsForm : DialogBase
         s.Port = (int)_port.Value;
         s.DiscoveryEnabled = _discovery.Checked;
         s.RelayServer = _relay.Text.Trim();
+        s.SetRelayKey(_relayKey.Text);
         s.Save();
         if (_autostart.Checked != Installer.AutoStart) Installer.AutoStart = _autostart.Checked;
         if (restartNet) _main.RestartNetwork();

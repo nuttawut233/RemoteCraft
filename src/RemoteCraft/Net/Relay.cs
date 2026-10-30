@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 
 namespace RemoteCraft.Net;
@@ -58,6 +59,40 @@ public static class Endpoint
     }
 }
 
+/// <summary>Relay protocol 2: the relay greets with a nonce; clients answer with a key proof.</summary>
+static class RelayAuth
+{
+    /// <summary>Connects, reads the greeting and returns the stream plus the proof to send ("-" without a key).</summary>
+    public static (Stream stream, string proof) Open(string host, int port, string relayKey)
+    {
+        var s = Endpoint.Connect(host, port);
+        try
+        {
+            s.ReadTimeout = 10000;
+            string greeting;
+            try { greeting = Endpoint.ReadLine(s); }
+            catch (IOException) { throw new IOException("The relay did not answer. It may be an older RemoteCraft.Relay; update it to version 2."); }
+            s.ReadTimeout = Timeout.Infinite;
+            var parts = greeting.Split(' ');
+            if (parts.Length < 3 || parts[0] != "RCRELAY") throw new IOException("Not a RemoteCraft relay.");
+            var proof = string.IsNullOrEmpty(relayKey)
+                ? "-"
+                : Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(relayKey), Encoding.ASCII.GetBytes(parts[2])));
+            return (s, proof);
+        }
+        catch { s.Dispose(); throw; }
+    }
+
+    public static string Explain(string reply) => reply switch
+    {
+        "DENIED" => "The relay refused the relay key. Check Settings → Connection → Relay key.",
+        "IDTAKEN" => "Another desk already owns this id at the relay.",
+        "BUSY" => "The relay is limiting requests from this address; try again in a minute.",
+        "OFFLINE" => "The remote desk is offline (not registered at the relay).",
+        _ => "Relay: " + reply,
+    };
+}
+
 /// <summary>
 /// Keeps this desk registered at a RemoteCraft relay so it can be reached by id from outside the LAN.
 /// The relay only pairs sockets; the session itself stays end-to-end encrypted.
@@ -68,6 +103,8 @@ public sealed class RelayLink : IDisposable
 
     readonly string _server;
     readonly string _id;
+    readonly string _key;
+    readonly string _owner;
     readonly Action<Stream, string> _onIncoming;
     volatile bool _stopped;
     Stream _control;
@@ -76,10 +113,14 @@ public sealed class RelayLink : IDisposable
     public bool Online { get; private set; }
     public event Action StatusChanged;
 
-    public RelayLink(string server, string id, Action<Stream, string> onIncoming)
+    /// <param name="key">Relay access key, or null for an open relay.</param>
+    /// <param name="ownerSecret">This desk's secret; the relay stores only its hash and lets no other desk take the id.</param>
+    public RelayLink(string server, string id, string key, string ownerSecret, Action<Stream, string> onIncoming)
     {
         _server = server;
         _id = id;
+        _key = key;
+        _owner = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(ownerSecret)));
         _onIncoming = onIncoming;
         new Thread(Run) { IsBackground = true, Name = "RelayLink" }.Start();
     }
@@ -98,10 +139,11 @@ public sealed class RelayLink : IDisposable
             try
             {
                 var (host, port) = Endpoint.Parse(_server, DefaultPort);
-                _control = Endpoint.Connect(host, port);
-                Endpoint.WriteLine(_control, "REG " + _id);
+                var (control, proof) = RelayAuth.Open(host, port, _key);
+                _control = control;
+                Endpoint.WriteLine(_control, $"REG {_id} {proof} {_owner}");
                 var reply = Endpoint.ReadLine(_control);
-                if (reply != "REGISTERED") throw new IOException(reply);
+                if (reply != "REGISTERED") throw new IOException(RelayAuth.Explain(reply));
                 SetStatus($"Relay {_server} online", true);
 
                 var ping = new System.Threading.Timer(_ => { try { Endpoint.WriteLine(_control, "PING"); } catch { } }, null, 25000, 25000);
@@ -133,7 +175,7 @@ public sealed class RelayLink : IDisposable
     {
         try
         {
-            var s = Endpoint.Connect(host, port);
+            var (s, _) = RelayAuth.Open(host, port, null); // the one-time token is the credential
             Endpoint.WriteLine(s, "ANSWER " + token);
             _onIncoming(s, "relay");
         }
@@ -141,15 +183,15 @@ public sealed class RelayLink : IDisposable
     }
 
     /// <summary>Asks the relay to pair us with the desk <paramref name="id"/>.</summary>
-    public static Stream Connect(string server, string id)
+    public static Stream Connect(string server, string key, string id)
     {
         var (host, port) = Endpoint.Parse(server, DefaultPort);
-        var s = Endpoint.Connect(host, port);
-        Endpoint.WriteLine(s, "CONNECT " + id);
+        var (s, proof) = RelayAuth.Open(host, port, key);
+        Endpoint.WriteLine(s, $"CONNECT {id} {proof}");
         var reply = Endpoint.ReadLine(s);
         if (reply == "OK") return s;
         s.Dispose();
-        throw new IOException(reply == "OFFLINE" ? "The remote desk is offline (not registered at the relay)." : "Relay: " + reply);
+        throw new IOException(RelayAuth.Explain(reply));
     }
 
     public void Dispose()
@@ -178,7 +220,7 @@ public static class Connector
                 catch when (!string.IsNullOrWhiteSpace(settings.RelayServer)) { }
             }
             if (!string.IsNullOrWhiteSpace(settings.RelayServer))
-                return (RelayLink.Connect(settings.RelayServer, id), "relay");
+                return (RelayLink.Connect(settings.RelayServer, settings.GetRelayKey(), id), "relay");
             throw new IOException("Desk " + DeskId.Format(id) + " was not found on the local network. " +
                                   "To reach desks outside the LAN, set a relay server in Settings → Connection, or connect by IP address.");
         }

@@ -33,6 +33,10 @@ public sealed class Settings
     public bool DiscoveryEnabled { get; set; } = true;
     public bool DiscoveryCardClosed { get; set; }
     public string RelayServer { get; set; } = "";
+    /// <summary>Relay access key, DPAPI-protected (base64); empty for an open relay.</summary>
+    public string RelayKeyProtected { get; set; }
+    /// <summary>Random secret proving to the relay that this desk owns its id.</summary>
+    public string RelaySecret { get; set; }
     public bool AllowRequests { get; set; } = true;
     public string PasswordSalt { get; set; }
     public string PasswordKey { get; set; }
@@ -64,6 +68,7 @@ public sealed class Settings
         catch { }
         s ??= new Settings();
         if (string.IsNullOrEmpty(s.DeskId)) s.DeskId = RemoteCraft.DeskId.NewId();
+        if (string.IsNullOrEmpty(s.RelaySecret)) s.RelaySecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         Current = s;
         s.Save();
     }
@@ -108,6 +113,23 @@ public sealed class Settings
         }
         Save();
         return r;
+    }
+
+    public string GetRelayKey()
+    {
+        if (string.IsNullOrEmpty(RelayKeyProtected)) return null;
+        try
+        {
+            var b = Native.Unprotect(Convert.FromBase64String(RelayKeyProtected));
+            return b == null ? null : System.Text.Encoding.UTF8.GetString(b);
+        }
+        catch { return null; }
+    }
+
+    public void SetRelayKey(string key)
+    {
+        var p = string.IsNullOrEmpty(key) ? null : Native.Protect(System.Text.Encoding.UTF8.GetBytes(key));
+        RelayKeyProtected = p == null ? null : Convert.ToBase64String(p);
     }
 
     public byte[] GetSavedKey(string id)

@@ -152,7 +152,7 @@ public sealed class MainForm : Form
 
         if (!string.IsNullOrWhiteSpace(s.RelayServer))
         {
-            _relay = new RelayLink(s.RelayServer, s.DeskId, Host.HandleIncoming);
+            _relay = new RelayLink(s.RelayServer, s.DeskId, s.GetRelayKey(), s.RelaySecret, Host.HandleIncoming);
             _relay.StatusChanged += () => Ui.Post(UpdateStatus);
         }
         UpdateStatus();

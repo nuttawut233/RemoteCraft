@@ -11,7 +11,7 @@
     <ApplicationIcon>Assets\RemoteCraft.ico</ApplicationIcon>
     <AssemblyName>RemoteCraft</AssemblyName>
     <RootNamespace>RemoteCraft</RootNamespace>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Product>RemoteCraft</Product>
     <Description>RemoteCraft remote desktop</Description>
     <NoWarn>CA1416;WFO1000</NoWarn>

@@ -17,18 +17,37 @@ A clean-room remote desktop app for Windows, modelled on the AnyDesk 5 layout an
 - You can connect by desk ID on the LAN, by `IP[:port]`, or by desk ID through a relay (`RemoteCraft.Relay`).
 - The app can install itself per user, with Start menu and desktop shortcuts and autostart in the tray.
 
+## Remote over the Internet
+Two PCs on different networks reach each other by desk ID through a relay server that you run on a VPS (or any machine with a public IP). Both PCs only make outgoing connections, so no router port forwarding is needed. Sessions stay end-to-end encrypted, and the relay only forwards ciphertext.
+
+**1. Run the relay on the server.** Use the single-file builds from the release (`RemoteCraft.Relay-2.0.0-linux-x64`, `-linux-arm64` or `-win-x64.exe`). They need no .NET.
+```
+./RemoteCraft.Relay-2.0.0-linux-x64 --port 7180 --key "a-long-random-key"
+```
+- **Linux service:** use `relay/remotecraft-relay.service` (systemd). Set the key with `systemctl edit remotecraft-relay` → `Environment=RCRELAY_KEY=...`.
+- **Docker:** run `docker build -f relay/Dockerfile -t remotecraft-relay .`, then `docker run -d -p 7180:7180 -e RCRELAY_KEY=... -v remotecraft-relay:/data remotecraft-relay`.
+- **Firewall:** open TCP 7180 on the server, for example `ufw allow 7180/tcp` plus your cloud provider's security group.
+
+**2. On every PC:** go to Settings → Connection and set **Relay server** to `your.server.com:7180`, and **Relay key** to the same key. The home screen shows "Relay … online". After that, entering a desk ID connects over the Internet when the desk isn't on the LAN.
+
+**Relay security:**
+- With `--key` (or `RCRELAY_KEY`), the relay accepts only clients that prove they know the key. The proof is HMAC challenge–response, so the key is never sent.
+- The first desk to register an ID owns it. The relay stores only a hash of the desk's secret in `relay-desks.json`, and refuses anyone else who tries to register that ID.
+- Limits per IP address: 40 connections, 20 connection attempts per minute, and 10 wrong keys per minute.
+- Without a key the relay is open to anyone who can reach it. Use that only on a private network.
+
 ## Build
 ```
 dotnet build -c Release
 ```
 - App: `src\RemoteCraft\bin\Release\net8.0-windows\RemoteCraft.exe`
-- Relay: `src\RemoteCraft.Relay\bin\Release\net8.0\RemoteCraft.Relay.exe [port]` (the default port is 7180)
+- Relay: `src\RemoteCraft.Relay\bin\Release\net8.0\RemoteCraft.Relay.exe [--port 7180] [--key KEY] [--data DIR]`
 
 ## Installer
 ```
 powershell -ExecutionPolicy Bypass -File installer\build-installer.ps1
 ```
-This produces `dist\RemoteCraft-Setup-<version>.exe` and `dist\RemoteCraft-<version>-portable.exe`.
+This produces `dist\RemoteCraft-Setup-<version>.exe`, `dist\RemoteCraft-<version>-portable.exe` and the relay builds `dist\RemoteCraft.Relay-<version>-{linux-x64,linux-arm64,win-x64}`.
 
 **Portable:** `RemoteCraft-<version>-portable.exe` is one self-contained file that runs without installing (no .NET needed). Settings are kept in `%APPDATA%\RemoteCraft`, the same as the installed app.
 

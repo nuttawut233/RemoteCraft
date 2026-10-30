@@ -39,3 +39,18 @@ if ($LASTEXITCODE) { throw "portable publish failed ($LASTEXITCODE)" }
 $portable = Join-Path $root "dist\RemoteCraft-$Version-portable.exe"
 Copy-Item (Join-Path $portableDir 'RemoteCraft.exe') $portable -Force
 "Portable:  $portable ($([math]::Round((Get-Item $portable).Length / 1MB, 1)) MB)"
+
+# Relay server for a VPS: single self-contained files for Linux and Windows.
+$relayVersion = ([xml](Get-Content $relay)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+foreach ($rid in 'linux-x64', 'linux-arm64', 'win-x64') {
+    $out = Join-Path $root "publish-relay\$rid"
+    if (Test-Path $out) { Remove-Item $out -Recurse -Force }
+    & $dotnet publish $relay -c Release -r $rid --self-contained true -p:DebugType=none `
+        -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o $out -nologo
+    if ($LASTEXITCODE) { throw "relay publish failed for $rid ($LASTEXITCODE)" }
+    $exe = if ($rid -like 'win-*') { 'RemoteCraft.Relay.exe' } else { 'RemoteCraft.Relay' }
+    $ext = if ($rid -like 'win-*') { '.exe' } else { '' }
+    $dest = Join-Path $root "dist\RemoteCraft.Relay-$relayVersion-$rid$ext"
+    Copy-Item (Join-Path $out $exe) $dest -Force
+    "Relay:     $dest ($([math]::Round((Get-Item $dest).Length / 1MB, 1)) MB)"
+}
